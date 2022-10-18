@@ -1,0 +1,40 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: "[copy_gcp_sa] Create folder for GCP SA JSON key files on buildserver"
+  ansible.builtin.file:
+    path: "{{ buildserver_sakeyfolder }}"
+    mode: 0700
+    state: directory
+
+# Not applicable when using Ansible Tower/AWX
+# The playbooks/sakeys/ folder can be used to store your GCP SA JSON key files when using OSS Ansible on the command-line
+- name: "[copy_gcp_sa] Copy GCP SA JSON key files to jump host"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ buildserver_sakeyfolder }}"
+    mode: 0600
+  # with_fileglob assumes JSON files are located in playbooks/sakeys/ on the Ansible Controller
+  with_fileglob:
+    - sakeys/*.json
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP Component Access SA JSON key file to buildserver from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ buildserver_gcpsa_component_access }}"
+    dest: "{{ buildserver_sakeyfolder }}/{{ buildserver_gcpsa }}"
+    mode: 0600
+  when:
+    - (buildserver_gcpsa_component_access is defined and buildserver_gcpsa_component_access|length > 0)

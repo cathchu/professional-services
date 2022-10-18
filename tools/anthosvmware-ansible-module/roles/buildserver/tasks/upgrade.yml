@@ -1,0 +1,83 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: "[buildserver] Setup buildserver config"
+  include_tasks: setup-config.yml
+
+- name: "[buildserver] Block - Copy/delete GCP SA JSON key files, govc deploy ova"
+  block:
+    - name: "[buildserver] delete check status file"
+      ansible.builtin.stat:
+        path: "{{ workdir }}/{{ buildserver_name }}-{{ glb_anthos_version }}-deleted-status"
+      register: delete_status_file
+
+    - name: "[buildserver] Delete old build server"
+      ansible.builtin.command: # noqa 204
+        chdir: "{{ workdir }}"
+        argv:
+          - "{{ govc }}"
+          - vm.destroy
+          - "{{ buildserver_name }}-{{ glb_anthos_version }}"
+      register: delete_govc_result
+      when: not delete_status_file.stat.exists
+
+    - name: "[buildserver] govc delete results"
+      ansible.builtin.file:
+        path: "{{ workdir }}/{{ buildserver_name }}-{{ glb_anthos_version }}-deleted-status"
+        state: touch
+        mode: 0600
+      when: delete_govc_result.rc | default('') == 0
+
+    - name: "[buildserver] Delete old status file"
+      ansible.builtin.file:
+        path: "{{ workdir }}/{{ buildserver_name }}-{{ glb_anthos_version }}-status"
+        state: absent
+
+    - name: "[buildserver] new check status file"
+      ansible.builtin.stat:
+        path: "{{ workdir }}/{{ buildserver_name }}-{{ buildserver_upgrade_version }}-status"
+      register: new_status_file
+
+    - name: "[buildserver] Create Newer build server"
+      ansible.builtin.command: # noqa 204
+        chdir: "{{ workdir }}"
+        argv:
+          - "{{ govc }}"
+          - import.ova
+          - -options=config.json
+          - anthos-admin-ws-{{ buildserver_upgrade_version }}.ova
+      register: new_govc_result
+      when: not new_status_file.stat.exists
+
+    - name: "[buildserver] govc results"
+      ansible.builtin.file:
+        path: "{{ workdir }}/{{ buildserver_name }}-{{ buildserver_upgrade_version }}-status"
+        state: touch
+        mode: 0600
+      when: new_govc_result.rc | default('') == 0
+
+  environment: # noqa 204
+    GOVC_URL: "https://{{ buildserver_vc_fqdn }}/sdk"
+    GOVC_USERNAME: "{{ buildserver_vc_username }}"
+    GOVC_PASSWORD: "{{ buildserver_vc_password }}"
+    GOVC_DATASTORE: "{{ buildserver_vc_datastore }}"
+    GOVC_DATACENTER: "{{ buildserver_vc_datacenter }}"
+    GOVC_RESOURCE_POOL: "{{ buildserver_vc_respool }}"
+    GOVC_INSECURE: "{{ 'true' if not buildserver_vc_validate_cert else 'false' }}"
+    GOVC_TLS_CA_CERTS: "{{ cert_files | join(':') if buildserver_vc_validate_cert else '' }}"
+
+  always:
+    - name: "Include role to delete sensitive files"
+      ansible.builtin.include_role:
+        name: cleanup

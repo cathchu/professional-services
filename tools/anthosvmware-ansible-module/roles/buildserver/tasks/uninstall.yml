@@ -1,0 +1,77 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: "[buildserver] check vCenter CA Directory"
+  ansible.builtin.stat:
+    path: "{{ workdir }}/vcenter/certs/lin"
+  register: vcenter_certs_dir
+
+- name: "[buildserver] Get vCenter CA cert file names"
+  ansible.builtin.find:
+    path: "{{ workdir }}/vcenter/certs/lin"
+    pattern: '*.0'
+  register: cert_files_full
+  when: vcenter_certs_dir.stat.exists and vcenter_certs_dir.stat.isdir
+
+- name: "[buildserver] get a list of cert files"
+  ansible.builtin.set_fact:
+    cert_files: "{{ cert_files_full.files | map(attribute='path') | list }}"
+
+# Ansible Lint skipping rules
+# ruleID 301 Commands should not change things if nothing needs doing
+# ruleID 204 Lines should be no longer than 160 chars
+- name: "[buildserver] Block - Delete buildserver, delete work directory"
+  block:
+    - name: "[buildserver] Check for buildserver VM"
+      ansible.builtin.command: # noqa 305 301 no-changed-when
+        chdir: "{{ workdir }}"
+        argv:
+          - "{{ govc }}"
+          - ls
+          - "vm/{{ buildserver_name }}-{{ glb_anthos_version }}"
+      register: buildserver_vm_name
+      tags: delete
+
+    - name: "[buildserver] Delete buildserver"
+      ansible.builtin.command: # noqa 305 204 301
+        chdir: "{{ workdir }}"
+        argv:
+          - "{{ govc }}"
+          - vm.destroy
+          - "{{ buildserver_vm_name.stdout }}"
+      when:
+        - buildserver_vm_name.rc | default('') == 0
+        - buildserver_vm_name.stdout | length > 0
+      tags: delete
+
+    - name: "[buildserver] Delete work directory"
+      ansible.builtin.file:
+        path: "{{ workdir }}"
+        state: absent
+      tags: delete
+
+  environment:
+    GOVC_URL: "https://{{ buildserver_vc_fqdn }}/sdk"
+    GOVC_USERNAME: "{{ buildserver_vc_username }}"
+    GOVC_PASSWORD: "{{ buildserver_vc_password }}"
+    GOVC_DATASTORE: "{{ buildserver_vc_datastore }}"
+    GOVC_DATACENTER: "{{ buildserver_vc_datacenter }}"
+    GOVC_RESOURCE_POOL: "{{ buildserver_vc_respool }}"
+    GOVC_INSECURE: "{{ 'true' if not buildserver_vc_validate_cert else 'false' }}"
+    GOVC_TLS_CA_CERTS: "{{ cert_files | join(':') if buildserver_vc_validate_cert else '' }}"
+
+  always:
+    - name: "Include role to delete sensitive files"
+      ansible.builtin.include_role:
+        name: cleanup

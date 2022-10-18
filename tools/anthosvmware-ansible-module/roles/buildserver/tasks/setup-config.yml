@@ -1,0 +1,159 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: "[buildserver] Create folder"
+  ansible.builtin.file:
+    path: "{{ workdir }}"
+    state: directory
+    mode: 0770
+
+- name: "[buildserver] Check for private download"
+  ansible.builtin.set_fact:
+    is_private_download: "{{ true if private_download_base is defined and private_download_base|length > 8 and private_download_auth_header is defined and private_download_auth_header|length > 5 else false }}"
+
+- name: "[buildserver] Download govc archive from private location"
+  ansible.builtin.get_url:
+    url: "{{ private_download_base }}/govc/0.27.5/govc-0.27.5.tar.gz"
+    headers:
+      Authorization: "{{ private_download_auth_header }}"
+    dest: "{{ workdir }}/govc.tar.gz"
+    mode: 0600
+  when: is_private_download|bool
+
+- name: "[buildserver] Download govc archive"
+  ansible.builtin.command:
+    chdir: "{{ workdir }}"
+    argv:
+      - curl
+      - -k
+      - -L
+      - https://github.com/vmware/govmomi/releases/download/v0.27.5/govc_Linux_x86_64.tar.gz
+      - -o
+      - "govc.tar.gz"
+    creates: "govc.tar.gz"
+  when: not (is_private_download|bool)
+  environment: # noqa 204
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin" # noqa 204
+    http_proxy: "{{ glb_proxyurl }}"
+    https_proxy: "{{ glb_proxyurl }}"
+    no_proxy: "{{ glb_noproxy }}"
+
+- name: "[buildserver] extract govc binary"
+  ansible.builtin.unarchive:
+    src: "{{ workdir }}/govc.tar.gz"
+    include: "govc"
+    dest: "{{ workdir }}"
+
+- name: "Include role for GCP SA JSON key files"
+  ansible.builtin.include_role:
+    name: copy_gcp_sa
+
+- name: "[buildserver] Download gcloud cli"
+  ansible.builtin.command:
+    chdir: "{{ workdir }}"
+    argv:
+      - curl
+      - -k
+      - -L
+      - https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-394.0.0-linux-x86_64.tar.gz
+      - -o
+      - "gcloud.tar.gz"
+    creates: "gcloud.tar.gz"
+  when: not (is_private_download|bool)
+  environment: # noqa 204
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin" # noqa 204
+    http_proxy: "{{ glb_proxyurl }}"
+    https_proxy: "{{ glb_proxyurl }}"
+    no_proxy: "{{ glb_noproxy }}"
+
+- name: "[buildserver] extract gcloud archive"
+  ansible.builtin.unarchive:
+    src: "{{ workdir }}/gcloud.tar.gz"
+    dest: "{{ workdir }}"
+    creates: "{{ workdir }}/google-cloud-sdk"
+  when: not (is_private_download|bool)
+
+- name: "[buildserver] Switch to Access Service Account Name"
+  ansible.builtin.command: # noqa 305 301 no-changed-when
+    argv:
+      - "{{ workdir }}/google-cloud-sdk/bin/gcloud"
+      - auth
+      - activate-service-account
+      - --key-file
+      - "{{ buildserver_sakeyfolder }}/{{ buildserver_gcpsa }}"
+  when: not (is_private_download|bool)
+
+- name: "[buildserver] Download admin workstation ova from private location"
+  ansible.builtin.get_url:
+    url: "{{ private_download_base }}/anthos/{{ glb_anthos_version }}/gke-on-prem-admin-appliance-vsphere-{{ glb_anthos_version }}.ova"
+    headers:
+      Authorization: "{{ private_download_auth_header }}"
+    dest: "{{ workdir }}/anthos-admin-ws-{{ glb_anthos_version }}.ova"
+    mode: 0600
+  when: is_private_download|bool
+
+# Prerequisite - gcloud auth login on the ansible runner
+- name: "[buildserver] Download admin workstation ova"
+  ansible.builtin.command: # noqa 204
+    chdir: "{{ workdir }}"
+    argv:
+      - "{{ workdir }}/google-cloud-sdk/bin/gsutil"
+      - cp
+      - gs://gke-on-prem-release/admin-appliance/{{ glb_anthos_version }}/gke-on-prem-admin-appliance-vsphere-{{ glb_anthos_version }}.ova
+      - "anthos-admin-ws-{{ glb_anthos_version }}.ova"
+    creates: "anthos-admin-ws-{{ glb_anthos_version }}.ova"
+  when: not (is_private_download|bool)
+
+- name: "[buildserver] Create vCenter CA cert directory"
+  ansible.builtin.file:
+    path: "{{ workdir }}/vcenter"
+    mode: 0700
+    state: directory
+
+- name: "[buildserver] Download vCenter CA cert bundle"
+  ansible.builtin.command:
+    chdir: "{{ workdir }}"
+    argv:
+      - curl
+      - -k
+      - https://{{ buildserver_vc_fqdn }}/certs/download.zip
+      - -o
+      - "vcenter/download.zip"
+    creates: "vcenter/download.zip"
+
+- name: "[buildserver] Extract vCenter CA cert bundle"
+  ansible.builtin.unarchive:
+    src: "{{ workdir }}/vcenter/download.zip"
+    dest: "{{ workdir }}/vcenter"
+    creates: "{{ workdir }}/vcenter/certs/lin"
+
+- name: "[buildserver] Get vCenter CA cert file names"
+  ansible.builtin.find:
+    path: "{{ workdir }}/vcenter/certs/lin"
+    pattern: '*.0'
+  register: cert_files_full
+
+- name: "[buildserver] get a list of cert files"
+  ansible.builtin.set_fact:
+    cert_files: "{{ cert_files_full.files | map(attribute='path') | list }}"
+
+- name: "[buildserver] Templating YAML file - user-data"
+  ansible.builtin.set_fact:
+    buildserver_user_data: "{{ lookup('template', 'user-data.yaml.j2') }}"
+
+- name: "[buildserver] Templating JSON file - config.json"
+  ansible.builtin.template:
+    src: config.json.j2
+    dest: "{{ workdir }}/config.json"
+    mode: 0600

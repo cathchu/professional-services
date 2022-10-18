@@ -1,0 +1,46 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- name: "[buildserver] Sanity Checks"
+  ansible.builtin.assert:
+    that:
+      - buildserver_name | length >= 4
+      - buildserver_vc_fqdn | length >= 4
+      - buildserver_vc_username | length >= 4
+      - buildserver_vc_password | length >= 8
+      - buildserver_vc_datacenter | length >= 2
+      - buildserver_vc_datastore | length >= 2
+      - buildserver_vc_cluster | length >= 2
+      - buildserver_vc_network | length >= 2
+      - buildserver_vc_respool | length >= 4
+      - buildserver_nw_ipallocmode is search("dhcp") or buildserver_nw_ipallocmode is search("static")
+      - buildserver_nw_ip | length >= 7
+      - buildserver_nw_gw | length >= 7
+      - buildserver_nw_cidr
+      - buildserver_nw_dns
+      - buildserver_ntp | length >= 7
+    fail_msg: "Undefined variables."
+    success_msg: "All required variables are defined."
+
+- name: "[buildserver] Sanity Checks for Upgrade"
+  ansible.builtin.assert:
+    that:
+      - buildserver_upgrade_version | length >= 4
+    when: buildserver_upgrade|default(false)|bool
+    fail_msg: "Undefined variables."
+    success_msg: "All required variables are defined."
+
+- name: "[buildserver] Note on optional values"
+  ansible.builtin.debug:
+    msg: "Optional values buildserver_vc_folder are not checked. Please double check if required."

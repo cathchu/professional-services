@@ -1,0 +1,51 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+# role buildserver default values
+ssh_auth_key: "" # content of the ssh pub key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKt ub@machine"
+workdir: "~/buildserver"
+
+# build server specific below until end of file
+buildserver_install: true
+buildserver_name: ""
+buildserver_gcpsa: ""
+buildserver_sakeyfolder: "" # folder where the sa keys are copied to
+
+# vSphere/vCenter
+buildserver_vc_fqdn: ""
+buildserver_vc_validate_cert: false
+buildserver_vc_username: ""
+buildserver_vc_password: ""
+buildserver_vc_datacenter: ""
+buildserver_vc_datastore: ""
+buildserver_vc_cluster: ""
+buildserver_vc_network: "" # VM Network
+buildserver_vc_folder: "" # optional
+buildserver_vc_respool: "" # if default resourcePool use <buildserver_vc_cluster>/Resources
+
+# Networking
+buildserver_nw_ipallocmode: "" # dhcp or static
+buildserver_nw_ip: "" # IP address of VM
+buildserver_nw_gw: "" # gateway
+buildserver_nw_cidr: "" # CIDR 24 or similar
+buildserver_nw_dns: [""]
+buildserver_ntp: "" # only one can be set default ntp.ubuntu.com
+
+# Customizations
+buildserver_custom_ca: ""
+
+# upgrade
+buildserver_upgrade: false
+buildserver_upgrade_version: "" # version to update do (matches adminws version)

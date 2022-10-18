@@ -1,0 +1,67 @@
+{#
+# Copyright 2022 Google LLC
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+#     http://www.apache.org/licenses/LICENSE-2.0
+# 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#}
+
+# cloud-config
+users:
+- name: ubuntu
+  hashed_passwd: "$6$rounds=4096$QOz.qNZsmqcjopKg$X1hlV/IWcOhPYpzWCBtMBjr5HtM4wdNziBhVIW4GTKGDhwoYrpS1bILLeky3mR75ErZ4nOkuzkm5qZkvUO3mQ/"
+  lock_passwd: false
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  groups: [sudo,docker]
+  ssh_authorized_keys: ["{{ ssh_auth_key }}"]
+- name: debug
+  passwd: "$6$rounds=4096$2PyKH8FGNQaTS/Nt$0IrOTLzutfj/6n56BbenJKWBN/i4B/zto90yzziPl9FVaWnEjW62wuSiCfV7ew7qDJtUoo.0dx7JD.KTyBNeZ0"
+  lock_passwd: false
+  sudo: ALL=(ALL) NOPASSWD:ALL
+  groups: [sudo,docker]
+  shell: /bin/bash
+
+ntp:
+  enabled: true
+  servers: ["{{ buildserver_ntp }}"]
+  ntp_client: systemd-timesyncd
+
+apt:
+  primary:
+  - arches: [default]
+    uri: http://us-west1.gce.archive.ubuntu.com/ubuntu/
+
+write_files:
+- path: /tmp/static-ip.yaml
+  permissions: '0644'
+  content: |
+    network:
+      version: 2
+      ethernets:
+        ens192:
+          dhcp4: no
+          dhcp6: no
+          addresses: ["{{ buildserver_nw_ip }}/{{ buildserver_nw_cidr }}"]
+          gateway4: "{{ buildserver_nw_gw }}"
+          nameservers:
+            addresses: 
+{% for ip in buildserver_nw_dns %}
+            - "{{ ip }}"
+{% endfor %}
+{% if buildserver_custom_ca and buildserver_custom_ca | length > 10 %}
+- path: /tmp/custom_ca.pem
+  encoding: b64
+  permissions: '0644'
+  content: "{{ buildserver_custom_ca | b64encode}}" 
+{% endif %}
+
+runcmd:
+- /var/lib/gke/guest-startup.sh

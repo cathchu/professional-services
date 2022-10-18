@@ -1,0 +1,125 @@
+# Copyright 2022 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+- name: "[copy_gcp_sa] Ensure credentials directory exists"
+  ansible.builtin.file:
+    path: "{{ yamldestpath }}/{{ ac_name if ac_name is defined else uc_name }}"
+    state: directory
+    mode: 0700
+
+- name: "[copy_gcp_sa] Templating YAML files - vCenter credentials"
+  ansible.builtin.template:
+    src: credential.yaml.j2
+    dest: "{{ yamldestpath }}/{{ ac_name if ac_name is defined else uc_name }}/credential.yaml"
+    mode: 0600
+  when:
+    - glb_vc_username is defined
+    - glb_vc_password is defined
+
+- name: "[copy_gcp_sa] Generate folder name for GCP SA JSON key files"
+  ansible.builtin.set_fact:
+    job_sakeyfolder: "{{ glb_sakeyfolder }}-{{ ac_name if ac_name is defined else uc_name }}"
+
+- name: "[copy_gcp_sa] Create folder for GCP SA JSON key files on admin workstation"
+  ansible.builtin.file:
+    path: "{{ job_sakeyfolder }}"
+    mode: 0700
+    state: directory
+
+# Not applicable when using Ansible Tower/AWX
+# The playbooks/sakeys/ folder can be used to store your GCP SA JSON key files when using OSS Ansible on the command-line
+- name: "[copy_gcp_sa] Copy GCP SA JSON key files to admin workstation"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ job_sakeyfolder }}"
+    mode: 0600
+  # with_fileglob assumes JSON files are located in playbooks/sakeys/ on the Ansible Controller
+  with_fileglob:
+    - sakeys/*.json
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP Component Access SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ ac_gcpsa if ac_gcpsa is defined else uc_gcpsa }}"
+    dest: "{{ job_sakeyfolder }}/{{ ac_componentserviceaccount_keypath if ac_componentserviceaccount_keypath is defined else uc_componentserviceaccount_keypath }}" # noqa 204
+    mode: 0600
+  when:
+    - (ac_gcpsa is defined and ac_gcpsa|length > 0) or
+      (uc_gcpsa is defined and uc_gcpsa|length > 0)
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP Logging-Monitoring SA JSON key file to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ ac_gcpsa_logging_monitoring if ac_gcpsa_logging_monitoring is defined else uc_gcpsa_logging_monitoring }}"
+    dest: "{{ job_sakeyfolder }}/{{ ac_stackdriver_serviceaccountkeypath if ac_stackdriver_serviceaccountkeypath is defined else uc_stackdriver_serviceaccountkeypath }}" # noqa 204
+    mode: 0600
+  when:
+    - (ac_gcpsa_logging_monitoring is defined and ac_gcpsa_logging_monitoring|length > 0) or
+      (uc_gcpsa_logging_monitoring is defined and uc_gcpsa_logging_monitoring|length > 0)
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP Connect Register SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ ac_gcpsa_connect_register if ac_gcpsa_connect_register is defined else uc_gcpsa_connect_register }}"
+    dest: "{{ job_sakeyfolder }}/{{ ac_gkeconnect_registerserviceaccountkeypath if ac_gkeconnect_registerserviceaccountkeypath is defined else uc_gkeconnect_registerserviceaccountkeypath }}" # noqa 204
+    mode: 0600
+  when:
+    - (ac_gcpsa_connect_register is defined and ac_gcpsa_connect_register|length > 0) or
+      (uc_gcpsa_connect_register is defined and uc_gcpsa_connect_register|length > 0)
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP Audit SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ ac_gcpsa_audit_logging if ac_gcpsa_audit_logging is defined else uc_gcpsa_audit_logging }}"
+    dest: "{{ job_sakeyfolder }}/{{ ac_cloudauditlogging_serviceaccountkeypath if ac_cloudauditlogging_serviceaccountkeypath is defined else uc_cloudauditlogging_serviceaccountkeypath }}" # noqa 204
+    mode: 0600
+  when:
+    - (ac_gcpsa_audit_logging is defined and ac_gcpsa_audit_logging|length > 0) or
+      (uc_gcpsa_audit_logging is defined and uc_gcpsa_audit_logging|length > 0)
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP ACM SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ acm_gcpsa if acm_gcpsa is defined }}"
+    dest: "{{ job_sakeyfolder }}/{{ acm_gcpsapath if acm_gcpsapath is defined }}"
+    mode: 0600
+  when:
+    - acm_gcpsa is defined
+    - acm_gcpsa|length > 0
+
+# Uses lookup plugin to get the GCP SA JSON key filename on Ansible controller
+# With OSS Ansible on the command-line, you could use --extra-vars
+- name: "[copy_gcp_sa] Copy GCP ASM SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ asm_gcpsa if asm_gcpsa is defined }}"
+    dest: "{{ job_sakeyfolder }}/{{ asm_gcpsapath if asm_gcpsapath is defined }}"
+    mode: 0600
+  when:
+    - asm_gcpsa is defined
+    - asm_gcpsa|length > 0
+
+- name: "[copy_gcp_sa] Copy GCP AIS GCS SA JSON key files to admin workstation from Tower Vault"
+  ansible.builtin.copy:
+    src: "{{ ais_gcpsa if ais_gcpsa is defined }}"
+    dest: "{{ job_sakeyfolder }}/{{ ais_gcpsapath if ais_gcpsapath is defined }}"
+    mode: 0600
+  when:
+    - ais_gcpsa is defined
+    - ais_gcpsa|length > 0
